@@ -1,0 +1,41 @@
+<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Panel de dependencia · CodeJalisco</title><link rel="stylesheet" href="/css/styles.css"><script src="/js/app.js"></script></head><body><header class="top" id="top"></header>
+<main class="pagina"><div class="wrap ancha">
+  <h1>Panel de dependencia</h1><p>Vista interna para dar seguimiento a los reportes enviados por la ciudadanía.</p>
+  <div class="stats" id="stats"></div>
+  <div class="card filtros"><div class="campo"><label for="fc">Filtrar por categoría</label><select id="fc"><option value="">Todas</option></select></div>
+    <div class="campo"><label for="fe">Filtrar por estado</label><select id="fe"><option value="">Todos</option></select></div>
+    <div class="campo"><label for="q">Buscar por folio o colonia</label><input id="q" placeholder="CJ-2026-1001, Centro..."></div></div>
+  <div id="msg"></div>
+  <div class="card"><div class="tabla-wrap"><table><thead><tr><th>Folio</th><th>Categoría</th><th>Ubicación</th><th>Fecha</th><th>Reportó</th><th>Estado</th><th>Actualizar</th></tr></thead><tbody id="tb"></tbody></table></div>
+    <div class="fila-btn" style="align-items:center;justify-content:space-between"><span class="ayuda" id="pinfo" role="status" style="margin:0"></span><span style="display:flex;gap:.7rem"><button class="btn sec" id="ant" type="button">Anterior</button><button class="btn sec" id="sig" type="button">Siguiente</button></span></div></div>
+</div></main><footer id="pie"></footer>
+<script>
+let estados = [], pagina = 1, seq = 0, timer;
+const params = () => new URLSearchParams({ categoria: fc.value, estado: fe.value, q: q.value.trim(), pagina, limite: 10 });
+async function cargar() { // el servidor filtra y pagina; evita cargar todos los reportes en una sola tabla
+  const mi = ++seq;
+  try {
+    const d = await api('/api/reportes?' + params()); if (mi !== seq) return;
+    pagina = d.pagina;
+    stats.innerHTML = estados.map(e => `<div class="card">${esc(e)}<b>${d.conteos[e] || 0}</b></div>`).join('');
+    tb.innerHTML = d.reportes.length ? d.reportes.map(r => `<tr><td><a href="/consultar.html?folio=${esc(r.folio)}"><b>${esc(r.folio)}</b></a></td><td>${esc(r.categoria)}</td><td>${esc(r.colonia)}, ${esc(r.municipio)}</td><td>${esc(r.fecha)}</td><td>${esc(r.usuarioNombre)}</td><td>${pill(r.estado)}</td>
+      <td><select data-f="${esc(r.folio)}" aria-label="Actualizar estado de ${esc(r.folio)}">${estados.map(e => `<option${e === r.estado ? ' selected' : ''}>${esc(e)}</option>`).join('')}</select></td></tr>`).join('')
+      : '<tr><td colspan="7">No hay reportes que coincidan con los filtros.</td></tr>';
+    pinfo.textContent = d.total ? `Página ${d.pagina} de ${d.paginas} · ${d.total} reporte${d.total === 1 ? '' : 's'}` : 'Sin resultados';
+    ant.disabled = d.pagina <= 1; sig.disabled = d.pagina >= d.paginas;
+  } catch (e) { aviso(document.getElementById('msg'), e.message, 'error'); }
+}
+init('administrador').then(async () => {
+  estados = await api('/api/estados'); (await api('/api/categorias')).forEach(c => fc.add(new Option(c.nombre, c.nombre))); estados.forEach(e => fe.add(new Option(e, e)));
+  cargar();
+}).catch(e => aviso(document.getElementById('msg'), e.message, 'error'));
+fc.onchange = fe.onchange = () => { pagina = 1; cargar(); };
+q.oninput = () => { clearTimeout(timer); timer = setTimeout(() => { pagina = 1; cargar(); }, 250); };
+ant.onclick = () => { pagina--; cargar(); }; sig.onclick = () => { pagina++; cargar(); };
+tb.onchange = async e => {
+  const f = e.target.dataset.f; if (!f) return;
+  try { await api(`/api/reportes/${f}/estado`, { method: 'PUT', body: { estado: e.target.value } }); aviso(document.getElementById('msg'), ''); toast(`Estado de ${f} actualizado`); }
+  catch (er) { aviso(document.getElementById('msg'), er.message, 'error'); }
+  cargar();
+};
+</script></body></html>
